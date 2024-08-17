@@ -24,7 +24,10 @@ class ReferenceData {
 			RemoteHandle<v8::Context> context,
 			TypeOf type_of,
 			bool accessors,
-			bool inherit
+			bool inherit,
+			bool is_array = false,
+			bool is_promise = false,
+			bool is_async = false
 		);
 
 	protected:
@@ -34,6 +37,9 @@ class ReferenceData {
 		TypeOf type_of;
 		bool accessors;
 		bool inherit;
+		bool is_array;
+		bool is_promise;
+		bool is_async;
 };
 
 } // namespace detail
@@ -61,6 +67,9 @@ class ReferenceHandle : public TransferableHandle, public detail::ReferenceData 
 		auto DerefInto(v8::MaybeLocal<v8::Object> maybe_options) -> v8::Local<v8::Value>;
 		auto Release() -> v8::Local<v8::Value>;
 		auto TypeOfGetter() -> v8::Local<v8::Value>;
+		auto IsArray() -> v8::Local<v8::Value>;
+		auto IsPromise() -> v8::Local<v8::Value>;
+		auto IsAsync() -> v8::Local<v8::Value>;
 
 		template <int async>
 		auto Apply(
