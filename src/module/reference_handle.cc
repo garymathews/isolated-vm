@@ -83,7 +83,10 @@ ReferenceData::ReferenceData(Local<Value> value, bool inherit) : ReferenceData{
 		RemoteHandle<Context>(Isolate::GetCurrent()->GetCurrentContext()),
 		InferTypeOf(value),
 		false,
-		inherit} {}
+		inherit,
+		value->IsArray(),
+		value->IsPromise(),
+		value->IsAsyncFunction()} {}
 
 ReferenceData::ReferenceData(
 	shared_ptr<IsolateHolder> isolate,
@@ -91,14 +94,20 @@ ReferenceData::ReferenceData(
 	RemoteHandle<Context> context,
 	TypeOf type_of,
 	bool accessors,
-	bool inherit
+	bool inherit,
+	bool is_array,
+	bool is_promise,
+	bool is_async
 ) :
 	isolate{std::move(isolate)},
 	reference{std::move(reference)},
 	context{std::move(context)},
 	type_of{type_of},
 	accessors{accessors},
-	inherit{inherit} {}
+	inherit{inherit},
+	is_array{is_array},
+	is_promise{is_promise},
+	is_async{is_async} {}
 
 } // namespace detail
 
@@ -125,7 +134,10 @@ auto ReferenceHandle::Definition() -> Local<FunctionTemplate> {
 		"applyIgnored", MemberFunction<decltype(&ReferenceHandle::Apply<2>), &ReferenceHandle::Apply<2>>{},
 		"applySync", MemberFunction<decltype(&ReferenceHandle::Apply<0>), &ReferenceHandle::Apply<0>>{},
 		"applySyncPromise", MemberFunction<decltype(&ReferenceHandle::Apply<4>), &ReferenceHandle::Apply<4>>{},
-		"typeof", MemberAccessor<decltype(&ReferenceHandle::TypeOfGetter), &ReferenceHandle::TypeOfGetter>{}
+		"typeof", MemberAccessor<decltype(&ReferenceHandle::TypeOfGetter), &ReferenceHandle::TypeOfGetter>{},
+		"isArray", MemberAccessor<decltype(&ReferenceHandle::IsArray), &ReferenceHandle::IsArray>{},
+		"isPromise", MemberAccessor<decltype(&ReferenceHandle::IsPromise), &ReferenceHandle::IsPromise>{},
+		"isAsync", MemberAccessor<decltype(&ReferenceHandle::IsAsync), &ReferenceHandle::IsAsync>{}
 	));
 }
 
@@ -160,6 +172,30 @@ auto ReferenceHandle::TypeOfGetter() -> Local<Value> {
 			return StringTable::Get().function;
 	}
 	std::terminate();
+}
+
+/**
+ * Getter for is_array property.
+ */
+auto ReferenceHandle::IsArray() -> Local<Value> {
+	CheckDisposed();
+	return v8::Boolean::New(Isolate::GetCurrent(), is_array);
+}
+
+/**
+ * Getter for is_promise property.
+ */
+auto ReferenceHandle::IsPromise() -> Local<Value> {
+	CheckDisposed();
+	return v8::Boolean::New(Isolate::GetCurrent(), is_promise);
+}
+
+/**
+ * Getter for is_async property.
+ */
+auto ReferenceHandle::IsAsync() -> Local<Value> {
+	CheckDisposed();
+	return v8::Boolean::New(Isolate::GetCurrent(), is_async);
 }
 
 /**
