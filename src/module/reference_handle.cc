@@ -122,6 +122,7 @@ auto ReferenceHandle::Definition() -> Local<FunctionTemplate> {
 		"release", MemberFunction<decltype(&ReferenceHandle::Release), &ReferenceHandle::Release>{},
 		"copy", MemberFunction<decltype(&ReferenceHandle::Copy<1>), &ReferenceHandle::Copy<1>>{},
 		"copySync", MemberFunction<decltype(&ReferenceHandle::Copy<0>), &ReferenceHandle::Copy<0>>{},
+		"copySyncPromise", MemberFunction<decltype(&ReferenceHandle::Copy<4>), &ReferenceHandle::Copy<4>>{},
 		"delete", MemberFunction<decltype(&ReferenceHandle::Delete<1>), &ReferenceHandle::Delete<1>>{},
 		"deleteIgnored", MemberFunction<decltype(&ReferenceHandle::Delete<2>), &ReferenceHandle::Delete<2>>{},
 		"deleteSync", MemberFunction<decltype(&ReferenceHandle::Delete<0>), &ReferenceHandle::Delete<0>>{},
@@ -454,20 +455,122 @@ class CopyRunner : public ThreePhaseTask {
 			that.CheckDisposed();
 		}
 
+		CopyRunner(const CopyRunner&) = delete;
+		auto operator=(const CopyRunner&) = delete;
+
+		~CopyRunner() final {
+			if (did_finish) {
+				*did_finish = 1;
+			}
+		}
+
 		void Phase2() final {
 			Context::Scope context_scope{Deref(context)};
 			Local<Value> value = Deref(reference);
 			copy = ExternalCopy::Copy(value);
 		}
 
+		auto Phase2Async(Scheduler::AsyncWait& wait) -> bool final {
+			// Same as regular `Phase2()` but if it returns a promise we will wait on it
+			Local<Context> context_handle = Deref(context);
+			Context::Scope context_scope{context_handle};
+			Local<Value> value = Deref(reference);
+			if (value->IsPromise()) {
+				Isolate* isolate = Isolate::GetCurrent();
+				// This is only called from the default isolate, so we don't need an IsolateSpecific
+				static Persistent<Function> callback_persistent{isolate, CompileAsyncWrapper()};
+				Local<Function> callback_fn = Deref(callback_persistent);
+				did_finish = std::make_shared<char>(0);
+				std::array<Local<Value>, 3> argv;
+				argv[0] = External::New(isolate, reinterpret_cast<void*>(this));
+				argv[1] = External::New(isolate, new shared_ptr<char>(did_finish));
+				argv[2] = value;
+				async_wait = &wait;
+				Unmaybe(callback_fn->Call(context_handle, callback_fn, 3, &argv.front()));
+				return true;
+			} else {
+				copy = ExternalCopy::Copy(value);
+				return false;
+			}
+		}
+
 		auto Phase3() -> Local<Value> final {
-			return copy->TransferIn();
+			if (did_finish && *did_finish == 0) {
+				*did_finish = 1;
+				throw RuntimeGenericError("Script execution timed out.");
+			} else if (async_error) {
+				Isolate::GetCurrent()->ThrowException(async_error->CopyInto());
+				throw RuntimeError();
+			} else {
+				return copy->TransferIn();
+			}
 		}
 
 	private:
+		/**
+		 * This is an internal callback that will be called after a Promise returned from
+		 * `copySyncPromise` has resolved
+		 */
+		static void AsyncCallback(const v8::FunctionCallbackInfo<v8::Value>& info) {
+			// It's possible the invocation timed out, in which case the ApplyRunner will be dead. The
+			// shared_ptr<bool> here will be marked as true and we can exit early.
+			auto* did_finish_ptr = reinterpret_cast<shared_ptr<char>*>(info[1].As<External>()->Value());
+			auto did_finish = std::move(*did_finish_ptr);
+			delete did_finish_ptr;
+			if (*did_finish == 1) {
+				return;
+			}
+			CopyRunner& self = *reinterpret_cast<CopyRunner*>(info[0].As<External>()->Value());
+			if (info.Length() == 3) {
+				// Resolved
+				FunctorRunners::RunCatchExternal(IsolateEnvironment::GetCurrent().DefaultContext(), [&self, &info]() {
+					self.copy = TransferOut(info[2], TransferOptions{TransferOptions::Type::DeepReference});
+				}, [&self](unique_ptr<ExternalCopy> error) {
+					self.async_error = std::move(error);
+				});
+			} else {
+				// Rejected
+				self.async_error = ExternalCopy::CopyThrownValue(info[3]);
+			}
+			*self.did_finish = 1;
+			self.async_wait->Done();
+		}
+
+		/**
+		 * The C++ promise interface is a little clumsy so this does some work in JS for us. This function
+		 * is called once and returns a JS function that will be reused.
+		 */
+		static auto CompileAsyncWrapper() -> Local<Function> {
+			Isolate* isolate = Isolate::GetCurrent();
+			Local<Context> context = IsolateEnvironment::GetCurrent().DefaultContext();
+			Local<Script> script = Unmaybe(Script::Compile(context, v8_string(
+				"'use strict';"
+				"(function(AsyncCallback) {"
+					"return function(ptr, did_finish, promise) {"
+						"promise.then(function(val) {"
+							"AsyncCallback(ptr, did_finish, val);"
+						"}, function(err) {"
+							"AsyncCallback(ptr, did_finish, null, err);"
+						"});"
+					"};"
+				"})"
+			)));
+			Local<Value> outer_fn = Unmaybe(script->Run(context));
+			assert(outer_fn->IsFunction());
+			Local<Value> callback_fn = Unmaybe(FunctionTemplate::New(isolate, AsyncCallback)->GetFunction(context));
+			Local<Value> inner_fn = Unmaybe(outer_fn.As<Function>()->Call(context, Undefined(isolate), 1, &callback_fn));
+			assert(inner_fn->IsFunction());
+			return inner_fn.As<Function>();
+		}
+
 		RemoteHandle<Context> context;
 		RemoteHandle<Value> reference;
 		unique_ptr<Transferable> copy;
+		// Only used in the AsyncPhase2 case
+		shared_ptr<char> did_finish; // GCC 5.4.0 `std::make_shared<bool>(...)` is broken(?)
+		TransferOptions return_transfer_options{TransferOptions::Type::Reference};
+		unique_ptr<ExternalCopy> async_error;
+		Scheduler::AsyncWait* async_wait = nullptr;
 };
 
 template <int async>
