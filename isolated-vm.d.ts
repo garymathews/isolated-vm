@@ -372,6 +372,12 @@ declare namespace IsolatedVM {
 		copySync(): T;
 
 		/**
+		 * `copySyncPromise` is a special version of `copySync` which waits for a promise to resolve
+		 * before returning the result.
+		 */
+		copySyncPromise(): T;
+
+		/**
 		 * Will attempt to return the actual value or object pointed to by this reference. Note that in
 		 * order to call this function the reference must be owned by the current isolate, otherwise an
 		 * error will be thrown.
