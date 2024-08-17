@@ -337,6 +337,27 @@ declare namespace IsolatedVM {
 		readonly typeof: string;
 
 		/**
+		 * The current state of a referenced promise.
+		 * kPending = , kFulfilled = 1, kRejected = 2
+		 */
+		readonly promiseState?: number;
+
+		/**
+		 * Determine if the current reference is an Array.
+		 */
+		readonly isArray: boolean;
+
+		/**
+		 * Determine if the current reference is a Promise.
+		 */
+		readonly isPromise: boolean;
+
+		/**
+		 * Determine if the current reference is an async function.
+		 */
+		readonly isAsync: boolean;
+
+		/**
 		 * Creates a copy of the referenced value and internalizes it into this isolate. This uses the
 		 * same copy rules as ExternalCopy.
 		 */
