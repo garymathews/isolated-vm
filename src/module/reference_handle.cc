@@ -4,6 +4,7 @@
 #include "isolate/three_phase_task.h"
 #include "transferable.h"
 #include <array>
+#include <cstring>
 
 using namespace v8;
 using std::shared_ptr;
@@ -29,6 +30,16 @@ auto InferTypeOf(Local<Value> value) -> TypeOf {
 	} else {
 		return TypeOf::Object;
 	}
+}
+
+char* GetConstructorName(Local<Value> value) {
+	if(value->IsObject()) {
+		char* name = new char[32];
+		auto ptr = *v8::String::Utf8Value(Isolate::GetCurrent(), value.As<v8::Object>()->GetConstructorName());
+		strncpy(name, ptr, 32);
+		return name;
+	}
+	return nullptr;
 }
 
 /**
@@ -86,7 +97,12 @@ ReferenceData::ReferenceData(Local<Value> value, bool inherit) : ReferenceData{
 		inherit,
 		value->IsArray(),
 		value->IsPromise(),
-		value->IsAsyncFunction()} {}
+		value->IsAsyncFunction(),
+		std::shared_ptr<char>(GetConstructorName(value), [](char* ptr) {
+			if (ptr) {
+				delete[] ptr;
+			}
+		})} {}
 
 ReferenceData::ReferenceData(
 	shared_ptr<IsolateHolder> isolate,
@@ -97,7 +113,8 @@ ReferenceData::ReferenceData(
 	bool inherit,
 	bool is_array,
 	bool is_promise,
-	bool is_async
+	bool is_async,
+	shared_ptr<char> name
 ) :
 	isolate{std::move(isolate)},
 	reference{std::move(reference)},
@@ -107,7 +124,8 @@ ReferenceData::ReferenceData(
 	inherit{inherit},
 	is_array{is_array},
 	is_promise{is_promise},
-	is_async{is_async} {}
+	is_async{is_async},
+	name{std::move(name)} {}
 
 } // namespace detail
 
@@ -138,7 +156,8 @@ auto ReferenceHandle::Definition() -> Local<FunctionTemplate> {
 		"typeof", MemberAccessor<decltype(&ReferenceHandle::TypeOfGetter), &ReferenceHandle::TypeOfGetter>{},
 		"isArray", MemberAccessor<decltype(&ReferenceHandle::IsArray), &ReferenceHandle::IsArray>{},
 		"isPromise", MemberAccessor<decltype(&ReferenceHandle::IsPromise), &ReferenceHandle::IsPromise>{},
-		"isAsync", MemberAccessor<decltype(&ReferenceHandle::IsAsync), &ReferenceHandle::IsAsync>{}
+		"isAsync", MemberAccessor<decltype(&ReferenceHandle::IsAsync), &ReferenceHandle::IsAsync>{},
+		"name", MemberAccessor<decltype(&ReferenceHandle::Name), &ReferenceHandle::Name>{}
 	));
 }
 
@@ -197,6 +216,17 @@ auto ReferenceHandle::IsPromise() -> Local<Value> {
 auto ReferenceHandle::IsAsync() -> Local<Value> {
 	CheckDisposed();
 	return v8::Boolean::New(Isolate::GetCurrent(), is_async);
+}
+
+/**
+ * Getter for constructor name.
+ */
+auto ReferenceHandle::Name() -> Local<Value> {
+	CheckDisposed();
+	if (name.get() == nullptr) {
+		return v8::Undefined(Isolate::GetCurrent());
+	}
+	return v8::String::NewFromUtf8(Isolate::GetCurrent(), name.get()).ToLocalChecked();;
 }
 
 /**
