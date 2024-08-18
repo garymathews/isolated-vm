@@ -330,6 +330,11 @@ declare namespace IsolatedVM {
 		constructor(value: T, options?: { unsafeInherit?: boolean });
 
 		/**
+		 * If the reference is a constructed object, this will be the class name.
+		 */
+		readonly name: string;
+
+		/**
 		 * This is the typeof the referenced value, and is available at any time
 		 * from any isolate. Note that this differs from the real typeof operator in
 		 * that null is "null", and Symbols are "object".

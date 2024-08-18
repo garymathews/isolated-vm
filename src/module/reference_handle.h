@@ -27,7 +27,8 @@ class ReferenceData {
 			bool inherit,
 			bool is_array = false,
 			bool is_promise = false,
-			bool is_async = false
+			bool is_async = false,
+			std::shared_ptr<char> name = std::make_shared<char>()
 		);
 
 	protected:
@@ -40,6 +41,7 @@ class ReferenceData {
 		bool is_array;
 		bool is_promise;
 		bool is_async;
+		std::shared_ptr<char> name;
 };
 
 } // namespace detail
@@ -70,6 +72,7 @@ class ReferenceHandle : public TransferableHandle, public detail::ReferenceData 
 		auto IsArray() -> v8::Local<v8::Value>;
 		auto IsPromise() -> v8::Local<v8::Value>;
 		auto IsAsync() -> v8::Local<v8::Value>;
+		auto Name() -> v8::Local<v8::Value>;
 
 		template <int async>
 		auto Apply(
