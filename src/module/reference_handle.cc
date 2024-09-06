@@ -1,4 +1,5 @@
 #include "reference_handle.h"
+#include "isolate/generic/handle_cast.h"
 #include "external_copy/external_copy.h"
 #include "isolate/run_with_timeout.h"
 #include "isolate/three_phase_task.h"
@@ -32,14 +33,12 @@ auto InferTypeOf(Local<Value> value) -> TypeOf {
 	}
 }
 
-char* GetConstructorName(Local<Value> value) {
+std::string* GetConstructorName(Local<Value> value) {
 	if(value->IsObject()) {
-		char* name = new char[32];
-		auto ptr = *v8::String::Utf8Value(Isolate::GetCurrent(), value.As<v8::Object>()->GetConstructorName());
-		strncpy(name, ptr, 32);
+		std::string* name = new std::string(HandleCast<std::string>(value.As<v8::Object>()->GetConstructorName()));
 		return name;
 	}
-	return nullptr;
+	return new std::string();
 }
 
 /**
@@ -98,11 +97,7 @@ ReferenceData::ReferenceData(Local<Value> value, bool inherit) : ReferenceData{
 		value->IsArray(),
 		value->IsPromise(),
 		value->IsAsyncFunction(),
-		std::shared_ptr<char>(GetConstructorName(value), [](char* ptr) {
-			if (ptr) {
-				delete[] ptr;
-			}
-		})} {}
+		std::shared_ptr<std::string>(GetConstructorName(value))} {}
 
 ReferenceData::ReferenceData(
 	shared_ptr<IsolateHolder> isolate,
@@ -114,7 +109,7 @@ ReferenceData::ReferenceData(
 	bool is_array,
 	bool is_promise,
 	bool is_async,
-	shared_ptr<char> name
+	shared_ptr<std::string> name
 ) :
 	isolate{std::move(isolate)},
 	reference{std::move(reference)},
@@ -199,7 +194,7 @@ auto ReferenceHandle::TypeOfGetter() -> Local<Value> {
  */
 auto ReferenceHandle::IsArray() -> Local<Value> {
 	CheckDisposed();
-	return v8::Boolean::New(Isolate::GetCurrent(), is_array);
+	return HandleCast<v8::Local<v8::Boolean>>(is_array);
 }
 
 /**
@@ -207,7 +202,7 @@ auto ReferenceHandle::IsArray() -> Local<Value> {
  */
 auto ReferenceHandle::IsPromise() -> Local<Value> {
 	CheckDisposed();
-	return v8::Boolean::New(Isolate::GetCurrent(), is_promise);
+	return HandleCast<v8::Local<v8::Boolean>>(is_promise);
 }
 
 /**
@@ -215,7 +210,7 @@ auto ReferenceHandle::IsPromise() -> Local<Value> {
  */
 auto ReferenceHandle::IsAsync() -> Local<Value> {
 	CheckDisposed();
-	return v8::Boolean::New(Isolate::GetCurrent(), is_async);
+	return HandleCast<v8::Local<v8::Boolean>>(is_async);
 }
 
 /**
@@ -226,7 +221,7 @@ auto ReferenceHandle::Name() -> Local<Value> {
 	if (name.get() == nullptr) {
 		return v8::Undefined(Isolate::GetCurrent());
 	}
-	return v8::String::NewFromUtf8(Isolate::GetCurrent(), name.get()).ToLocalChecked();;
+	return HandleCast<v8::Local<v8::String>>(name.get());
 }
 
 /**

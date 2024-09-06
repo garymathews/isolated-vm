@@ -254,4 +254,8 @@ inline auto HandleCastImpl(const std::string& value, const HandleCastArguments& 
 	return Unmaybe(v8::String::NewFromUtf8(arguments.isolate, value.c_str(), v8::NewStringType::kNormal, value.size()));
 }
 
+inline auto HandleCastImpl(const std::string* value, const HandleCastArguments& arguments, HandleCastTag<v8::Local<v8::String>> /*tag*/) {
+	return Unmaybe(v8::String::NewFromUtf8(arguments.isolate, value->c_str(), v8::NewStringType::kNormal, value->size()));
+}
+
 } // namespace ivm
