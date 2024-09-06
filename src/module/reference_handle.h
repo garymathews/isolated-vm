@@ -28,7 +28,7 @@ class ReferenceData {
 			bool is_array = false,
 			bool is_promise = false,
 			bool is_async = false,
-			std::shared_ptr<char> name = std::make_shared<char>()
+			std::shared_ptr<std::string> name = std::make_shared<std::string>()
 		);
 
 	protected:
@@ -41,7 +41,7 @@ class ReferenceData {
 		bool is_array;
 		bool is_promise;
 		bool is_async;
-		std::shared_ptr<char> name;
+		std::shared_ptr<std::string> name;
 };
 
 } // namespace detail
