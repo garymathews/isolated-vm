@@ -5,3 +5,5 @@ out/
 .cache/
 compile_commands.json
 /prebuilds/
+.DS_Store
+.vscode
