@@ -288,6 +288,11 @@ declare namespace IsolatedVM {
 		readonly namespace: Reference<any>;
 
 		/**
+		 * Returns a boolean to determine if the module has been instantiated.
+		 */
+		readonly instantiated: boolean;
+
+		/**
 		 * Instantiate the module together with all its dependencies. Calling this more than once on a
 		 * single module will have no effect.
 		 * @param context The context the module should use.
