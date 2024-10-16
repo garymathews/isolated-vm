@@ -56,6 +56,7 @@ class ModuleHandle : public TransferableHandle {
 
 		auto Instantiate(class ContextHandle& context_handle, v8::Local<v8::Function> callback) -> v8::Local<v8::Value>;
 		auto InstantiateSync(class ContextHandle& context_handle, v8::Local<v8::Function> callback) -> v8::Local<v8::Value>;
+		auto Instantiated() -> v8::Local<v8::Value>;
 
 		template <int async>
 		auto Evaluate(v8::MaybeLocal<v8::Object> maybe_options) -> v8::Local<v8::Value>;
