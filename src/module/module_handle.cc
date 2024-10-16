@@ -72,8 +72,13 @@ auto ModuleHandle::Definition() -> Local<FunctionTemplate> {
 		"evaluate", MemberFunction<decltype(&ModuleHandle::Evaluate<1>), &ModuleHandle::Evaluate<1>>{},
 		"evaluateSync", MemberFunction<decltype(&ModuleHandle::Evaluate<0>), &ModuleHandle::Evaluate<0>>{},
 		"namespace", MemberAccessor<decltype(&ModuleHandle::GetNamespace), &ModuleHandle::GetNamespace>{},
-		"release", MemberFunction<decltype(&ModuleHandle::Release), &ModuleHandle::Release>{}
+		"release", MemberFunction<decltype(&ModuleHandle::Release), &ModuleHandle::Release>{},
+		"instantiated", MemberAccessor<decltype(&ModuleHandle::Instantiated), &ModuleHandle::Instantiated>{}
 	));
+}
+
+auto ModuleHandle::Instantiated() -> Local<Value> {
+	return HandleCast<Local<Boolean>>(!!info->global_namespace);
 }
 
 auto ModuleHandle::TransferOut() -> std::unique_ptr<Transferable> {
