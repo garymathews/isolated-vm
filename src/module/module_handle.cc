@@ -73,12 +73,20 @@ auto ModuleHandle::Definition() -> Local<FunctionTemplate> {
 		"evaluateSync", MemberFunction<decltype(&ModuleHandle::Evaluate<0>), &ModuleHandle::Evaluate<0>>{},
 		"namespace", MemberAccessor<decltype(&ModuleHandle::GetNamespace), &ModuleHandle::GetNamespace>{},
 		"release", MemberFunction<decltype(&ModuleHandle::Release), &ModuleHandle::Release>{},
-		"instantiated", MemberAccessor<decltype(&ModuleHandle::Instantiated), &ModuleHandle::Instantiated>{}
+		"instantiated", MemberAccessor<decltype(&ModuleHandle::Instantiated), &ModuleHandle::Instantiated>{},
+		"context", MemberAccessor<decltype(&ModuleHandle::GetContext), &ModuleHandle::GetContext>{}
 	));
 }
 
 auto ModuleHandle::Instantiated() -> Local<Value> {
 	return HandleCast<Local<Boolean>>(!!info->global_namespace);
+}
+
+auto ModuleHandle::GetContext() -> Local<Value> {
+	auto context_handle = info->context_handle.Deref();
+	auto context = RemoteHandle<Context>{context_handle};
+	auto global = RemoteHandle<Value>{info->global};
+	return ClassHandle::NewInstance<ContextHandle>(std::move(context), std::move(global));
 }
 
 auto ModuleHandle::TransferOut() -> std::unique_ptr<Transferable> {
@@ -282,6 +290,7 @@ struct InstantiateRunner : public ThreePhaseTask {
 		Local<Module> mod = info->handle.Deref();
 		Local<Context> context_local = context.Deref();
 		info->context_handle = std::move(context);
+		info->global = RemoteHandle<Value>{context_local->Global()};
 		std::lock_guard<std::mutex> lock{info->mutex};
 		TryCatch try_catch{Isolate::GetCurrent()};
 		try {
