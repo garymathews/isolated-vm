@@ -293,6 +293,11 @@ declare namespace IsolatedVM {
 		readonly instantiated: boolean;
 
 		/**
+		 * Returns the context the module has been instantiated with.
+		 */
+		readonly context: Context;
+
+		/**
 		 * Instantiate the module together with all its dependencies. Calling this more than once on a
 		 * single module will have no effect.
 		 * @param context The context the module should use.

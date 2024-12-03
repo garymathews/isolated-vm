@@ -22,6 +22,7 @@ struct ModuleInfo {
 	std::unordered_map<std::string, std::shared_ptr<ModuleInfo>> resolutions;
 	RemoteHandle<v8::Module> handle;
 	RemoteHandle<v8::Context> context_handle;
+	RemoteHandle<v8::Value> global;
 	RemoteHandle<v8::Value> global_namespace;
 	RemoteHandle<v8::Function> meta_callback;
 	explicit ModuleInfo(v8::Local<v8::Module> handle);
@@ -57,6 +58,7 @@ class ModuleHandle : public TransferableHandle {
 		auto Instantiate(class ContextHandle& context_handle, v8::Local<v8::Function> callback) -> v8::Local<v8::Value>;
 		auto InstantiateSync(class ContextHandle& context_handle, v8::Local<v8::Function> callback) -> v8::Local<v8::Value>;
 		auto Instantiated() -> v8::Local<v8::Value>;
+		auto GetContext() -> v8::Local<v8::Value>;
 
 		template <int async>
 		auto Evaluate(v8::MaybeLocal<v8::Object> maybe_options) -> v8::Local<v8::Value>;
