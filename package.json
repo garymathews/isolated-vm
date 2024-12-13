@@ -8,18 +8,16 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "install": "node-gyp-build 'node-gyp rebuild -j 4 --release -v' || node-gyp rebuild --release -j max",
-    "prebuild": "node scripts/run-prebuild.js",
+    "install": "node-gyp rebuild --release -j max && node-gyp clean",
     "rebuild": "node-gyp rebuild --release -j max",
     "lint": "find src -name '*.cc' | xargs -n1 clang-tidy",
     "test": "node test.js"
   },
   "dependencies": {
-    "node-gyp-build": "^4.8.4"
+    "node-gyp": "^11.0.0"
   },
-  "devDependencies": {
-    "isolated-vm": ".",
-    "prebuildify": "^6.0.1"
+  "binary": {
+    "module_path": "out"
   },
   "repository": {
     "type": "git",
