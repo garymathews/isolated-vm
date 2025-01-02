@@ -207,10 +207,10 @@ class ModuleLinker : public ClassHandle {
 						info->linker = this;
 						break;
 					case ModuleInfo::LinkStatus::Linking:
-						if (info->linker != this) {
-							throw RuntimeGenericError("Module is currently being linked by another linker");
+						if (info->linker == this) {
+							return;
 						}
-						return;
+						break;
 					case ModuleInfo::LinkStatus::Linked:
 						return;
 				}
