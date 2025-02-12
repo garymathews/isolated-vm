@@ -151,6 +151,7 @@ auto ReferenceHandle::Definition() -> Local<FunctionTemplate> {
 		"typeof", MemberAccessor<decltype(&ReferenceHandle::TypeOfGetter), &ReferenceHandle::TypeOfGetter>{},
 		"isArray", MemberAccessor<decltype(&ReferenceHandle::IsArray), &ReferenceHandle::IsArray>{},
 		"isPromise", MemberAccessor<decltype(&ReferenceHandle::IsPromise), &ReferenceHandle::IsPromise>{},
+		"promiseState", MemberAccessor<decltype(&ReferenceHandle::PromiseState), &ReferenceHandle::PromiseState>{},
 		"isAsync", MemberAccessor<decltype(&ReferenceHandle::IsAsync), &ReferenceHandle::IsAsync>{},
 		"name", MemberAccessor<decltype(&ReferenceHandle::Name), &ReferenceHandle::Name>{}
 	));
@@ -203,6 +204,18 @@ auto ReferenceHandle::IsArray() -> Local<Value> {
 auto ReferenceHandle::IsPromise() -> Local<Value> {
 	CheckDisposed();
 	return HandleCast<v8::Local<v8::Boolean>>(is_promise);
+}
+
+/**
+ * Getter for promise_state property.
+ */
+auto ReferenceHandle::PromiseState() -> Local<Value> {
+	CheckDisposed();
+	if (!is_promise) {
+		return v8::Undefined(Isolate::GetCurrent());
+	}
+	const int32_t state = reference.Deref().As<v8::Promise>()->State();
+	return HandleCast<v8::Local<v8::Integer>>(state);
 }
 
 /**

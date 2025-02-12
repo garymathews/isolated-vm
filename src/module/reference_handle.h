@@ -71,6 +71,7 @@ class ReferenceHandle : public TransferableHandle, public detail::ReferenceData 
 		auto TypeOfGetter() -> v8::Local<v8::Value>;
 		auto IsArray() -> v8::Local<v8::Value>;
 		auto IsPromise() -> v8::Local<v8::Value>;
+		auto PromiseState() -> v8::Local<v8::Value>;
 		auto IsAsync() -> v8::Local<v8::Value>;
 		auto Name() -> v8::Local<v8::Value>;
 
