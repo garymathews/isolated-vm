@@ -457,17 +457,33 @@ struct EvaluateRunner : public ThreePhaseTask {
 		}
 		Local<Context> context_local = Deref(info->context_handle);
 		Context::Scope context_scope(context_local);
-		result = OptionalTransferOut(RunWithTimeout(timeout, [&]() { return mod->Evaluate(context_local); }));
+		auto& env = IsolateEnvironment::GetCurrent();
+		bool has_filename = !info->filename.empty();
+		if (has_filename) {
+			env.PushPromiseStackHint(info->filename);
+		}
+		Local<Value> evaluate_result;
+		try {
+			evaluate_result = RunWithTimeout(timeout, [&]() { return mod->Evaluate(context_local); });
+		} catch (const RuntimeError&) {
+			if (has_filename) {
+				env.PopPromiseStackHint();
+			}
+			throw;
+		}
+		if (has_filename) {
+			env.PopPromiseStackHint();
+		}
+		if (has_filename && evaluate_result->IsPromise()) {
+			env.SetPromiseStackHint(evaluate_result.As<Promise>(), info->filename);
+		}
+		result = OptionalTransferOut(evaluate_result);
 		std::lock_guard<std::mutex> lock(info->mutex);
 		info->global_namespace = RemoteHandle<Value>(mod->GetModuleNamespace());
 	}
 
 	auto Phase3() -> Local<Value> final {
-		if (result) {
-			return result->TransferIn();
-		} else {
-			return Undefined(Isolate::GetCurrent()).As<Value>();
-		}
+		return result ? result->TransferIn() : Undefined(Isolate::GetCurrent()).As<Value>();
 	}
 };
 

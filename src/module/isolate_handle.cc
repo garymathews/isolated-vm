@@ -11,6 +11,7 @@
 #include "isolate/functor_runners.h"
 #include "isolate/platform_delegate.h"
 #include "isolate/remote_handle.h"
+#include "isolate/stack_trace.h"
 #include "isolate/three_phase_task.h"
 #include "isolate/v8_version.h"
 #include "module/evaluation.h"
@@ -292,6 +293,7 @@ struct CompileModuleRunner : public CodeCompilerHolder, public ThreePhaseTask {
 
 		ResetSource();
 		module_info = std::make_shared<ModuleInfo>(module_handle);
+		module_info->filename = GetFilename();
 		if (meta_callback) {
 			if (meta_callback.GetSharedIsolateHolder() != IsolateEnvironment::GetCurrentHolder()) {
 				throw RuntimeGenericError("`meta` callback must belong to entered isolate");
@@ -611,7 +613,12 @@ auto IsolateHandle::CreateSnapshot(ArrayRange script_handles, MaybeLocal<String>
 
 	// Export to outer scope
 	if (error) {
-		Isolate::GetCurrent()->ThrowException(error->CopyInto());
+		Isolate* isolate = Isolate::GetCurrent();
+		Local<Value> error_copy = error->CopyInto();
+		if (error_copy->IsObject()) {
+			StackTraceHolder::AttachOrChainStack(error_copy.As<Object>(), StackTrace::CurrentStackTrace(isolate, 10));
+		}
+		isolate->ThrowException(error_copy);
 		return Undefined(Isolate::GetCurrent());
 	} else if (snapshot.raw_size == 0) {
 		throw RuntimeGenericError("Failure creating snapshot");

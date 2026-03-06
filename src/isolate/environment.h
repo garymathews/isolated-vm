@@ -109,6 +109,7 @@ class IsolateEnvironment {
 		v8::HeapStatistics last_heap {};
 		// Copyable traits used to opt into destructor handle reset
 		std::deque<v8::Global<v8::Promise>> unhandled_promise_rejections;
+		std::vector<std::string> promise_stack_hints;
 		StringTable string_table;
 
 		std::vector<v8::Eternal<v8::Data>> specifics;
@@ -141,6 +142,9 @@ class IsolateEnvironment {
 		static void PromiseRejectCallback(v8::PromiseRejectMessage rejection);
 	public:
 		void PromiseWasHandled(v8::Local<v8::Promise> promise);
+		void PushPromiseStackHint(std::string hint);
+		void PopPromiseStackHint();
+		void SetPromiseStackHint(v8::Local<v8::Promise> promise, const std::string& hint);
 
 	private:
 		static auto CodeGenCallback(v8::Local<v8::Context> context, v8::Local<v8::Value> source) -> v8::ModifyCodeGenerationFromStringsResult;

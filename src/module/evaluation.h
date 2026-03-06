@@ -18,6 +18,7 @@ class ScriptOriginHolder {
 	public:
 		explicit ScriptOriginHolder(v8::MaybeLocal<v8::Object> maybe_options, bool is_module = false);
 		explicit operator v8::ScriptOrigin() const;
+		auto GetFilename() const -> const std::string& { return filename; }
 
 	private:
 		std::string filename = "<isolated-vm>";
@@ -42,6 +43,7 @@ class CodeCompilerHolder {
 		void SetCachedDataRejected(bool rejected) { cached_data_rejected = rejected; }
 		auto ShouldProduceCachedData() const { return produce_cached_data && (!supplied_cached_data || cached_data_rejected); }
 		void WriteCompileResults(v8::Local<v8::Object> handle);
+		auto GetFilename() const -> const std::string& { return script_origin_holder.GetFilename(); }
 
 	private:
 		auto GetCachedData() const -> std::unique_ptr<v8::ScriptCompiler::CachedData>;

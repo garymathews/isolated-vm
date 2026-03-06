@@ -112,7 +112,7 @@ class ThreePhaseTask {
 				}, [&](v8::Local<v8::Value> error) {
 					// A C++ error was caught while running ctor (phase 1)
 					if (error->IsObject()) {
-						StackTraceHolder::AttachStack(error.As<v8::Object>(), stack_trace);
+						StackTraceHolder::AttachOrChainStack(error.As<v8::Object>(), stack_trace);
 					}
 					Unmaybe(promise_local->Reject(context_local, error));
 				});

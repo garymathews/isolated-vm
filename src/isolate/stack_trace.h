@@ -17,7 +17,11 @@ class StackTraceHolder : public ClassHandle {
 		explicit StackTraceHolder(v8::Local<v8::StackTrace> stack_handle);
 		static auto Definition() -> v8::Local<v8::FunctionTemplate>;
 		static void AttachStack(v8::Local<v8::Object> error, v8::Local<v8::StackTrace> stack);
+		static void AttachOrChainStack(v8::Local<v8::Object> error, v8::Local<v8::StackTrace> stack);
+		static void AttachStackString(v8::Local<v8::Object> error, v8::Local<v8::String> stack);
 		static void ChainStack(v8::Local<v8::Object> error, v8::Local<v8::StackTrace> stack);
+		static void AppendStackStringFrame(v8::Local<v8::Object> error, v8::Local<v8::String> frame);
+		static auto BuildModuleFrame(v8::Local<v8::Object> error, v8::Local<v8::String> filename) -> v8::Local<v8::String>;
 		static auto RenderSingleStack(v8::Local<v8::StackTrace> stack_trace) -> std::string;
 };
 

@@ -122,6 +122,32 @@ void StackTraceHolder::AttachStack(Local<Object> error, Local<StackTrace> stack)
 	AttachStackGetter(error, ClassHandle::NewInstance<StackTraceHolder>(stack));
 }
 
+void StackTraceHolder::AttachOrChainStack(Local<Object> error, Local<StackTrace> stack) {
+	Isolate* isolate = Isolate::GetCurrent();
+	Local<Context> context = isolate->GetCurrentContext();
+	Local<Value> private_stack = Unmaybe(error->GetPrivate(context, GetPrivateStackSymbol()));
+	if (!private_stack->IsUndefined()) {
+		return ChainStack(error, stack);
+	}
+	Local<StackTrace> existing_stack = Exception::GetStackTrace(error);
+	if (!existing_stack.IsEmpty()) {
+		return ChainStack(error, stack);
+	}
+	TryCatch try_catch{isolate};
+	try {
+		if (Unmaybe(error->Get(context, StringTable::Get().stack))->IsString()) {
+			return ChainStack(error, stack);
+		}
+	} catch (const RuntimeError&) {
+		try_catch.Reset();
+	}
+	AttachStack(error, stack);
+}
+
+void StackTraceHolder::AttachStackString(Local<Object> error, Local<String> stack) {
+	AttachStackGetter(error, stack);
+}
+
 void StackTraceHolder::ChainStack(Local<Object> error, Local<StackTrace> stack) {
 	Isolate* isolate = Isolate::GetCurrent();
 	Local<Context> context = isolate->GetCurrentContext();
@@ -144,6 +170,47 @@ void StackTraceHolder::ChainStack(Local<Object> error, Local<StackTrace> stack) 
 	Unmaybe(pair->Set(context, 0, ClassHandle::NewInstance<StackTraceHolder>(stack)));
 	Unmaybe(pair->Set(context, 1, existing_data));
 	AttachStackGetter(error, pair);
+}
+
+void StackTraceHolder::AppendStackStringFrame(Local<Object> error, Local<String> frame) {
+	Isolate* isolate = Isolate::GetCurrent();
+	Local<Context> context = isolate->GetCurrentContext();
+	TryCatch try_catch{isolate};
+	try {
+		Local<Value> value = Unmaybe(error->Get(context, StringTable::Get().stack));
+		if (!value->IsString()) {
+			return;
+		}
+		Local<String> stack = value.As<String>();
+		String::Utf8Value stack_utf8{isolate, stack};
+		String::Utf8Value frame_utf8{isolate, frame};
+		if (std::strstr(*stack_utf8, *frame_utf8) != nullptr) {
+			return;
+		}
+		Unmaybe(error->Set(context, StringTable::Get().stack, StringConcat(isolate, stack, frame)));
+	} catch (const RuntimeError&) {
+		try_catch.Reset();
+	}
+}
+
+auto StackTraceHolder::BuildModuleFrame(Local<Object> error, Local<String> filename) -> Local<String> {
+	Isolate* isolate = Isolate::GetCurrent();
+	int line = 1;
+	int column = 1;
+	Local<StackTrace> stack = Exception::GetStackTrace(error);
+	if (!stack.IsEmpty() && stack->GetFrameCount() > 0) {
+		Local<StackFrame> frame = stack->GetFrame(isolate, 0);
+		if (frame->GetLineNumber() > 0) {
+			line = frame->GetLineNumber();
+		}
+		if (frame->GetColumn() > 0) {
+			column = frame->GetColumn();
+		}
+	}
+	std::string module_frame = "\n    at <module> (";
+	module_frame += *String::Utf8Value{isolate, filename};
+	module_frame += ":" + std::to_string(line) + ":" + std::to_string(column) + ")";
+	return Unmaybe(String::NewFromUtf8(isolate, module_frame.c_str(), NewStringType::kNormal));
 }
 
 auto StackTraceHolder::RenderSingleStack(Local<StackTrace> stack_trace) -> std::string {
@@ -184,7 +251,7 @@ auto StackTraceHolder::RenderSingleStack(Local<StackTrace> stack_trace) -> std::
 				ss <<*fn_name;
 			} else {
 				AppendFileLocation(isolate, frame, ss);
-				return ss.str();
+				continue;
 			}
 			ss <<" (";
 			AppendFileLocation(isolate, frame, ss);

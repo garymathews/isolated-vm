@@ -2,6 +2,7 @@
 #include <v8.h>
 #include <memory>
 #include <mutex>
+#include <string>
 #include "isolate/holder.h"
 #include "isolate/remote_handle.h"
 #include "transferable.h"
@@ -19,6 +20,7 @@ struct ModuleInfo {
 	LinkStatus link_status = LinkStatus::None;
 	int identity_hash;
 	std::vector<std::string> dependency_specifiers;
+	std::string filename;
 	std::unordered_map<std::string, std::shared_ptr<ModuleInfo>> resolutions;
 	RemoteHandle<v8::Module> handle;
 	RemoteHandle<v8::Context> context_handle;

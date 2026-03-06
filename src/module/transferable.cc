@@ -5,14 +5,23 @@
 #include "callback.h"
 #include "reference_handle.h"
 #include "transferable.h"
-#include "transferable.h"
 #include "external_copy_handle.h"
+#include "isolate/stack_trace.h"
 #include <deque>
 
 using namespace v8;
 
 namespace ivm {
 namespace {
+
+auto PrepareRejectedValue(const std::shared_ptr<Transferable>& value) -> Local<Value> {
+	Isolate* isolate = Isolate::GetCurrent();
+	Local<Value> rejection = value->TransferIn();
+	if (rejection->IsObject()) {
+		StackTraceHolder::AttachOrChainStack(rejection.As<Object>(), StackTrace::CurrentStackTrace(isolate, 10));
+	}
+	return rejection;
+}
 
 // Shared state for `TransferablePromise` and `TransferablePromiseHolder`
 struct TransferablePromiseStateStruct {
@@ -120,7 +129,7 @@ class TransferablePromiseHolder final : public ClassHandle {
 				Context::Scope context_scope{context};
 				auto resolver = this->resolver.Deref<0>();
 				if (did_throw) {
-					Unmaybe(resolver->Reject(context, value->TransferIn()));
+					Unmaybe(resolver->Reject(context, PrepareRejectedValue(value)));
 				} else {
 					Unmaybe(resolver->Resolve(context, value->TransferIn()));
 				}
@@ -155,7 +164,7 @@ class TransferablePromise : public Transferable {
 			auto lock = state->write();
 			if (lock->resolved) {
 				if (lock->did_throw) {
-					Unmaybe(resolver->Reject(context, lock->value->TransferIn()));
+					Unmaybe(resolver->Reject(context, PrepareRejectedValue(lock->value)));
 				} else {
 					Unmaybe(resolver->Resolve(context, lock->value->TransferIn()));
 				}

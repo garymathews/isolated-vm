@@ -393,7 +393,12 @@ class ApplyRunner : public ThreePhaseTask {
 				*did_finish = true;
 				throw RuntimeGenericError("Script execution timed out.");
 			} else if (async_error) {
-				Isolate::GetCurrent()->ThrowException(async_error->CopyInto());
+				Isolate* isolate = Isolate::GetCurrent();
+				Local<Value> error = async_error->CopyInto();
+				if (error->IsObject()) {
+					StackTraceHolder::AttachOrChainStack(error.As<Object>(), StackTrace::CurrentStackTrace(isolate, 10));
+				}
+				isolate->ThrowException(error);
 				throw RuntimeError();
 			} else {
 				return ret->TransferIn();
@@ -541,7 +546,12 @@ class CopyRunner : public ThreePhaseTask {
 				*did_finish = true;
 				throw RuntimeGenericError("Script execution timed out.");
 			} else if (async_error) {
-				Isolate::GetCurrent()->ThrowException(async_error->CopyInto());
+				Isolate* isolate = Isolate::GetCurrent();
+				Local<Value> error = async_error->CopyInto();
+				if (error->IsObject()) {
+					StackTraceHolder::AttachOrChainStack(error.As<Object>(), StackTrace::CurrentStackTrace(isolate, 10));
+				}
+				isolate->ThrowException(error);
 				throw RuntimeError();
 			} else {
 				return copy->TransferIn();

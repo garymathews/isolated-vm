@@ -3,6 +3,7 @@
 #include "inspector.h"
 #include "isolate/cpu_profile_manager.h"
 #include "isolate/generic/error.h"
+#include "stack_trace.h"
 #include "platform_delegate.h"
 #include "runnable.h"
 #include "external_copy/external_copy.h"
@@ -16,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 #include "v8-platform.h"
 #include "v8.h"
@@ -82,6 +84,13 @@ thread_suspend_handle::initialize suspend_init{};
 
 namespace {
 	std::mutex isolate_allocator_mutex{};
+
+	auto GetPromiseStackHintSymbol() -> Local<Private> {
+		static IsolateSpecific<Private> holder;
+		return holder.Deref([]() {
+			return Private::New(Isolate::GetCurrent());
+		});
+	}
 } // anonymous namespace
 
 /**
@@ -151,6 +160,9 @@ void IsolateEnvironment::PromiseRejectCallback(PromiseRejectMessage rejection) {
 	// TODO: Revisit this in version 4.x?
 	auto event = rejection.GetEvent();
 	if (event == kPromiseRejectWithNoHandler) {
+		if (!that.promise_stack_hints.empty()) {
+			that.SetPromiseStackHint(rejection.GetPromise(), that.promise_stack_hints.back());
+		}
 		that.unhandled_promise_rejections.emplace_back(that.isolate, rejection.GetPromise());
 		that.unhandled_promise_rejections.back().SetWeak();
 	} else if (event == kPromiseHandlerAddedAfterReject) {
@@ -159,10 +171,39 @@ void IsolateEnvironment::PromiseRejectCallback(PromiseRejectMessage rejection) {
 }
 
 void IsolateEnvironment::PromiseWasHandled(v8::Local<v8::Promise> promise) {
+	TryCatch try_catch{isolate};
+	try {
+		Local<Context> context = isolate->GetCurrentContext();
+		Unmaybe(promise->SetPrivate(context, GetPromiseStackHintSymbol(), Undefined(isolate)));
+	} catch (const RuntimeError&) {
+		try_catch.Reset();
+	}
 	for (auto& handle : unhandled_promise_rejections) {
 		if (handle == promise) {
 			handle.Reset();
 		}
+	}
+}
+
+void IsolateEnvironment::PushPromiseStackHint(std::string hint) {
+	promise_stack_hints.emplace_back(std::move(hint));
+}
+
+void IsolateEnvironment::PopPromiseStackHint() {
+	promise_stack_hints.pop_back();
+}
+
+void IsolateEnvironment::SetPromiseStackHint(Local<Promise> promise, const std::string& hint) {
+	TryCatch try_catch{isolate};
+	try {
+		Local<Context> context = isolate->GetCurrentContext();
+		Unmaybe(promise->SetPrivate(
+			context,
+			GetPromiseStackHintSymbol(),
+			Unmaybe(String::NewFromUtf8(isolate, hint.c_str(), NewStringType::kNormal))
+		));
+	} catch (const RuntimeError&) {
+		try_catch.Reset();
 	}
 }
 
@@ -494,13 +535,32 @@ auto IsolateEnvironment::TaskEpilogue() -> std::unique_ptr<ExternalCopy> {
 		throw FatalRuntimeError("Isolate was disposed during execution due to memory limit");
 	}
 	auto rejected_promises = std::exchange(unhandled_promise_rejections, {});
+	std::unique_ptr<ExternalCopy> first_rejection;
 	for (auto& handle : rejected_promises) {
-		if (!handle.IsEmpty()) {
-			Context::Scope context_scope{DefaultContext()};
-			return ExternalCopy::CopyThrownValue(Deref(handle)->Result());
+		if (handle.IsEmpty()) {
+			continue;
 		}
+		if (first_rejection) {
+			unhandled_promise_rejections.emplace_back(std::move(handle));
+			continue;
+		}
+		Context::Scope context_scope{DefaultContext()};
+		Local<Promise> promise = Deref(handle);
+		Local<Value> reason = promise->Result();
+		if (reason->IsObject()) {
+			Local<Context> context = isolate->GetCurrentContext();
+			Local<Value> stack_hint = Unmaybe(promise->GetPrivate(context, GetPromiseStackHintSymbol()));
+			if (stack_hint->IsString()) {
+				StackTraceHolder::AppendStackStringFrame(
+					reason.As<Object>(),
+					StackTraceHolder::BuildModuleFrame(reason.As<Object>(), stack_hint.As<String>())
+				);
+				Unmaybe(promise->SetPrivate(context, GetPromiseStackHintSymbol(), Undefined(isolate)));
+			}
+		}
+		first_rejection = ExternalCopy::CopyThrownValue(reason);
 	}
-	return {};
+	return first_rejection;
 }
 
 auto IsolateEnvironment::GetLimitedAllocator() const -> LimitedAllocator* {

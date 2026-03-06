@@ -150,6 +150,23 @@ void ThreePhaseTask::Phase2Runner::Run() {
 			self(std::move(self)),
 			info(std::move(info)) {}
 
+		static void PromiseRelay(const FunctionCallbackInfo<Value>& info) {
+			Local<Context> context = Isolate::GetCurrent()->GetCurrentContext();
+			Local<Array> holder = info.Data().As<Array>();
+			Local<Promise::Resolver> resolver = holder->Get(context, 0).ToLocalChecked().As<Promise::Resolver>();
+			Local<Value> value = info[0];
+			bool rejected = Unmaybe(holder->Get(context, 2)).As<Boolean>()->Value();
+			if (rejected) {
+				if (value->IsObject()) {
+					Local<String> caller_stack = holder->Get(context, 1).ToLocalChecked().As<String>();
+					StackTraceHolder::AppendStackStringFrame(value.As<Object>(), caller_stack);
+				}
+				Unmaybe(resolver->Reject(context, value));
+			} else {
+				Unmaybe(resolver->Resolve(context, value));
+			}
+		}
+
 		void Run() final {
 			Isolate* isolate = Isolate::GetCurrent();
 			auto context_local = info.remotes.Deref<1>();
@@ -158,11 +175,28 @@ void ThreePhaseTask::Phase2Runner::Run() {
 			CallbackScope callback_scope(info.async, promise_local);
 			FunctorRunners::RunCatchValue([&]() {
 				// Final callback
-				Unmaybe(promise_local->Resolve(context_local, self->Phase3()));
+				Local<Value> value = self->Phase3();
+				if (!value->IsPromise()) {
+					Unmaybe(promise_local->Resolve(context_local, value));
+					return;
+				}
+				Local<String> caller_stack = Unmaybe(String::NewFromUtf8(
+					isolate,
+					StackTraceHolder::RenderSingleStack(info.remotes.Deref<2>()).c_str(),
+					NewStringType::kNormal
+				));
+				auto make_relay = [&](bool rejected) -> Local<Function> {
+					Local<Array> data = Array::New(isolate, 3);
+					Unmaybe(data->Set(context_local, 0, promise_local));
+					Unmaybe(data->Set(context_local, 1, caller_stack));
+					Unmaybe(data->Set(context_local, 2, rejected ? True(isolate) : False(isolate)));
+					return Unmaybe(Function::New(context_local, PromiseRelay, data));
+				};
+				Unmaybe(value.As<Promise>()->Then(context_local, make_relay(false), make_relay(true)));
 			}, [&](Local<Value> error) {
 				// Error was thrown
 				if (error->IsObject()) {
-					StackTraceHolder::AttachStack(error.As<Object>(), info.remotes.Deref<2>());
+					StackTraceHolder::AttachOrChainStack(error.As<Object>(), info.remotes.Deref<2>());
 				}
 				Unmaybe(promise_local->Reject(context_local, error));
 			});
@@ -171,15 +205,16 @@ void ThreePhaseTask::Phase2Runner::Run() {
 	};
 
 	did_run = true;
+	auto& env = IsolateEnvironment::GetCurrent();
 	auto schedule_error = [&](std::unique_ptr<ExternalCopy> error) {
 		// Schedule a task to enter the first isolate so we can throw the error at the promise
 		auto* holder = info.remotes.GetIsolateHolder();
 		holder->ScheduleTask(std::make_unique<Phase3Failure>(std::move(self), std::move(info), std::move(error)), false, true);
 	};
-	FunctorRunners::RunCatchExternal(IsolateEnvironment::GetCurrent().DefaultContext(), [&]() {
+	FunctorRunners::RunCatchExternal(env.DefaultContext(), [&]() {
 		// Continue the task
 		self->Phase2();
-		auto epilogue_error = IsolateEnvironment::GetCurrent().TaskEpilogue();
+		auto epilogue_error = env.TaskEpilogue();
 		if (epilogue_error) {
 			schedule_error(std::move(epilogue_error));
 		} else {

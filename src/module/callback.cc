@@ -81,7 +81,11 @@ class InvokeRunner : public ThreePhaseTask {
 			}
 			auto value = Unmaybe(maybe_value);
 			if (data.apply != CallbackHandle::Data::Apply::Ignored) {
-				result = TransferOut(value, TransferOptions{TransferOptions::Type::Copy});
+				TransferOptions options{TransferOptions::Type::Copy};
+				if (data.apply == CallbackHandle::Data::Apply::Async) {
+					options.promise = true;
+				}
+				result = TransferOut(value, options);
 			}
 		}
 

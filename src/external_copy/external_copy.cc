@@ -6,6 +6,7 @@
 #include "isolate/allocator.h"
 #include "isolate/environment.h"
 #include "isolate/functor_runners.h"
+#include "isolate/stack_trace.h"
 #include "isolate/util.h"
 #include "isolate/v8_version.h"
 
@@ -357,7 +358,7 @@ auto ExternalCopyError::CopyInto(bool /*transfer_in*/) -> Local<Value> {
 	// Now add stack information
 	if (this->stack) {
 		Local<String> stack = Local<String>::Cast(this->stack.CopyInto(false));
-		Unmaybe(Local<Object>::Cast(handle)->Set(context, StringTable::Get().stack, stack));
+		StackTraceHolder::AttachStackString(Local<Object>::Cast(handle), stack);
 	}
 	return handle;
 }
