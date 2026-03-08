@@ -458,24 +458,24 @@ struct EvaluateRunner : public ThreePhaseTask {
 		Local<Context> context_local = Deref(info->context_handle);
 		Context::Scope context_scope(context_local);
 		auto& env = IsolateEnvironment::GetCurrent();
-		bool has_filename = !info->filename.empty();
-		if (has_filename) {
-			env.PushPromiseStackHint(info->filename);
+		bool has_stack_trace_frame = !info->stack_trace_frame.empty();
+		if (has_stack_trace_frame) {
+			env.PushPromiseStackHint(info->stack_trace_frame);
 		}
 		Local<Value> evaluate_result;
 		try {
 			evaluate_result = RunWithTimeout(timeout, [&]() { return mod->Evaluate(context_local); });
 		} catch (const RuntimeError&) {
-			if (has_filename) {
+			if (has_stack_trace_frame) {
 				env.PopPromiseStackHint();
 			}
 			throw;
 		}
-		if (has_filename) {
+		if (has_stack_trace_frame) {
 			env.PopPromiseStackHint();
 		}
-		if (has_filename && evaluate_result->IsPromise()) {
-			env.SetPromiseStackHint(evaluate_result.As<Promise>(), info->filename);
+		if (has_stack_trace_frame && evaluate_result->IsPromise()) {
+			env.SetPromiseStackHint(evaluate_result.As<Promise>(), info->stack_trace_frame);
 		}
 		result = OptionalTransferOut(evaluate_result);
 		std::lock_guard<std::mutex> lock(info->mutex);

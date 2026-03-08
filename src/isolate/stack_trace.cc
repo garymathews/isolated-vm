@@ -187,7 +187,7 @@ void StackTraceHolder::AppendStackStringFrame(Local<Object> error, Local<String>
 		if (std::strstr(*stack_utf8, *frame_utf8) != nullptr) {
 			return;
 		}
-		Unmaybe(error->Set(context, StringTable::Get().stack, StringConcat(isolate, stack, frame)));
+		AttachStackString(error, StringConcat(isolate, stack, frame));
 	} catch (const RuntimeError&) {
 		try_catch.Reset();
 	}

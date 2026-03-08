@@ -29,6 +29,76 @@ using std::unique_ptr;
 
 namespace ivm {
 
+namespace {
+
+auto BuildModuleStackFrameHint(Local<String> code_handle, const std::string& filename) -> std::string {
+	String::Utf8Value code_utf8{Isolate::GetCurrent(), code_handle};
+	const char* code = *code_utf8;
+	if (code == nullptr || filename.empty()) {
+		return {};
+	}
+
+	int line = 1;
+	int column = 1;
+	const char* cursor = code;
+
+	auto skip_line = [&](const char* start) {
+		while (*start != '\0' && *start != '\n') {
+			++start;
+		}
+		if (*start == '\n') {
+			++start;
+		}
+		return start;
+	};
+
+	while (*cursor != '\0') {
+		const char* line_start = cursor;
+		int current_column = 1;
+		while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r') {
+			++cursor;
+			++current_column;
+		}
+		if (*cursor == '\n') {
+			++cursor;
+			++line;
+			continue;
+		}
+		if (*cursor == '\0') {
+			break;
+		}
+		if (std::strncmp(cursor, "import ", 7) == 0 || std::strncmp(cursor, "import{", 7) == 0) {
+			cursor = skip_line(line_start);
+			++line;
+			continue;
+		}
+		if (std::strncmp(cursor, "export ", 7) == 0 || std::strncmp(cursor, "export{", 7) == 0) {
+			const char* after_export = cursor + 7;
+			while (*after_export == ' ' || *after_export == '\t') {
+				++after_export;
+				++current_column;
+			}
+			if (std::strncmp(after_export, "const ", 6) != 0 &&
+				std::strncmp(after_export, "let ", 4) != 0 &&
+				std::strncmp(after_export, "var ", 4) != 0 &&
+				std::strncmp(after_export, "function ", 9) != 0 &&
+				std::strncmp(after_export, "class ", 6) != 0 &&
+				std::strncmp(after_export, "async function ", 15) != 0) {
+				cursor = after_export;
+			}
+		}
+		column = current_column;
+		break;
+	}
+
+	std::string module_frame = "\n    at <module> (";
+	module_frame += filename;
+	module_frame += ":" + std::to_string(line) + ":" + std::to_string(column) + ")";
+	return module_frame;
+}
+
+} // namespace
+
 /**
  * IsolateHandle implementation
  */
@@ -262,15 +332,16 @@ auto IsolateHandle::CompileScript(Local<String> code_handle, MaybeLocal<Object> 
 struct CompileModuleRunner : public CodeCompilerHolder, public ThreePhaseTask {
 	shared_ptr<ModuleInfo> module_info;
 	RemoteHandle<Function> meta_callback;
+	std::string stack_trace_frame;
 
 	CompileModuleRunner(const Local<String>& code_handle, const MaybeLocal<Object>& maybe_options) :
 		CodeCompilerHolder{code_handle, maybe_options, true} {
-
 		auto maybe_meta_callback = ReadOption<MaybeLocal<Function>>(maybe_options, StringTable::Get().meta, {});
 		Local<Function> meta_callback;
 		if (maybe_meta_callback.ToLocal(&meta_callback)) {
 			this->meta_callback = RemoteHandle<Function>{meta_callback};
 		}
+		stack_trace_frame = BuildModuleStackFrameHint(code_handle, GetFilename());
 	}
 
 	void Phase2() final {
@@ -294,6 +365,7 @@ struct CompileModuleRunner : public CodeCompilerHolder, public ThreePhaseTask {
 		ResetSource();
 		module_info = std::make_shared<ModuleInfo>(module_handle);
 		module_info->filename = GetFilename();
+		module_info->stack_trace_frame = stack_trace_frame;
 		if (meta_callback) {
 			if (meta_callback.GetSharedIsolateHolder() != IsolateEnvironment::GetCurrentHolder()) {
 				throw RuntimeGenericError("`meta` callback must belong to entered isolate");

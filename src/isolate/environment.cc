@@ -170,6 +170,24 @@ void IsolateEnvironment::PromiseRejectCallback(PromiseRejectMessage rejection) {
 	}
 }
 
+void IsolateEnvironment::PromiseHook(PromiseHookType type, Local<Promise> promise, Local<Value> parent) {
+	if (type != PromiseHookType::kInit) {
+		return;
+	}
+	auto& that = IsolateEnvironment::GetCurrent();
+	assert(that.isolate == Isolate::GetCurrent());
+	if (parent->IsPromise()) {
+		Local<Value> inherited_hint = that.GetPromiseStackHint(parent.As<Promise>());
+		if (inherited_hint->IsString()) {
+			that.SetPromiseStackHint(promise, *String::Utf8Value{that.isolate, inherited_hint});
+			return;
+		}
+	}
+	if (!that.promise_stack_hints.empty()) {
+		that.SetPromiseStackHint(promise, that.promise_stack_hints.back());
+	}
+}
+
 void IsolateEnvironment::PromiseWasHandled(v8::Local<v8::Promise> promise) {
 	TryCatch try_catch{isolate};
 	try {
@@ -204,6 +222,17 @@ void IsolateEnvironment::SetPromiseStackHint(Local<Promise> promise, const std::
 		));
 	} catch (const RuntimeError&) {
 		try_catch.Reset();
+	}
+}
+
+auto IsolateEnvironment::GetPromiseStackHint(Local<Promise> promise) -> Local<Value> {
+	TryCatch try_catch{isolate};
+	try {
+		Local<Context> context = isolate->GetCurrentContext();
+		return Unmaybe(promise->GetPrivate(context, GetPromiseStackHintSymbol()));
+	} catch (const RuntimeError&) {
+		try_catch.Reset();
+		return Undefined(isolate);
 	}
 }
 
@@ -429,6 +458,7 @@ void IsolateEnvironment::IsolateCtor(size_t memory_limit_in_mb, shared_ptr<v8::B
 
 	// Various callbacks
 	isolate->SetOOMErrorHandler(OOMErrorCallback);
+	isolate->SetPromiseHook(PromiseHook);
 	isolate->SetPromiseRejectCallback(PromiseRejectCallback);
 	isolate->SetModifyCodeGenerationFromStringsCallback(CodeGenCallback2);
 
@@ -553,7 +583,7 @@ auto IsolateEnvironment::TaskEpilogue() -> std::unique_ptr<ExternalCopy> {
 			if (stack_hint->IsString()) {
 				StackTraceHolder::AppendStackStringFrame(
 					reason.As<Object>(),
-					StackTraceHolder::BuildModuleFrame(reason.As<Object>(), stack_hint.As<String>())
+					stack_hint.As<String>()
 				);
 				Unmaybe(promise->SetPrivate(context, GetPromiseStackHintSymbol(), Undefined(isolate)));
 			}

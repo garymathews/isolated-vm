@@ -21,6 +21,7 @@ struct ModuleInfo {
 	int identity_hash;
 	std::vector<std::string> dependency_specifiers;
 	std::string filename;
+	std::string stack_trace_frame;
 	std::unordered_map<std::string, std::shared_ptr<ModuleInfo>> resolutions;
 	RemoteHandle<v8::Module> handle;
 	RemoteHandle<v8::Context> context_handle;

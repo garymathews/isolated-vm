@@ -139,12 +139,14 @@ class IsolateEnvironment {
 		 * Called when an isolate has an uncaught error in a promise. This makes no distinction between
 		 * contexts so we have to handle that ourselves.
 		 */
+		static void PromiseHook(v8::PromiseHookType type, v8::Local<v8::Promise> promise, v8::Local<v8::Value> parent);
 		static void PromiseRejectCallback(v8::PromiseRejectMessage rejection);
 	public:
 		void PromiseWasHandled(v8::Local<v8::Promise> promise);
 		void PushPromiseStackHint(std::string hint);
 		void PopPromiseStackHint();
 		void SetPromiseStackHint(v8::Local<v8::Promise> promise, const std::string& hint);
+		auto GetPromiseStackHint(v8::Local<v8::Promise> promise) -> v8::Local<v8::Value>;
 
 	private:
 		static auto CodeGenCallback(v8::Local<v8::Context> context, v8::Local<v8::Value> source) -> v8::ModifyCodeGenerationFromStringsResult;

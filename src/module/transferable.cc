@@ -16,10 +16,16 @@ namespace {
 
 constexpr const char* kLazyIvmTarget = "__ivm_target__";
 
-auto PrepareRejectedValue(const std::shared_ptr<Transferable>& value) -> Local<Value> {
+auto PrepareRejectedValue(const std::shared_ptr<Transferable>& value, const std::string& stack_hint = "") -> Local<Value> {
 	Isolate* isolate = Isolate::GetCurrent();
 	Local<Value> rejection = value->TransferIn();
 	if (rejection->IsObject()) {
+		if (!stack_hint.empty()) {
+			StackTraceHolder::AppendStackStringFrame(
+				rejection.As<Object>(),
+				Unmaybe(String::NewFromUtf8(isolate, stack_hint.c_str(), NewStringType::kNormal))
+			);
+		}
 		StackTraceHolder::AttachOrChainStack(rejection.As<Object>(), StackTrace::CurrentStackTrace(isolate, 10));
 	}
 	return rejection;
@@ -28,6 +34,7 @@ auto PrepareRejectedValue(const std::shared_ptr<Transferable>& value) -> Local<V
 // Shared state for `TransferablePromise` and `TransferablePromiseHolder`
 struct TransferablePromiseStateStruct {
 	std::shared_ptr<Transferable> value;
+	std::string stack_hint;
 	// This would be a good case for a unique_ptr version of RemoteHandle
 	std::deque<RemoteTuple<Promise::Resolver, v8::Context>> waiting;
 	bool did_throw = false;
@@ -111,7 +118,7 @@ class TransferablePromiseHolder final : public ClassHandle {
 			for (auto& resolver : pending_tasks) {
 				auto holder = resolver.GetIsolateHolder();
 				holder->ScheduleTask(
-					std::make_unique<ResolveTask>(std::move(resolver), resolved_value, did_throw),
+					std::make_unique<ResolveTask>(std::move(resolver), resolved_value, did_throw, state->read()->stack_hint),
 					false, true);
 			}
 		}
@@ -123,15 +130,15 @@ class TransferablePromiseHolder final : public ClassHandle {
 		}
 
 		struct ResolveTask : Runnable {
-			ResolveTask(RemoteTuple<Promise::Resolver, v8::Context> resolver, std::shared_ptr<Transferable> value, bool did_throw) :
-				resolver{std::move(resolver)}, value{std::move(value)}, did_throw{did_throw} {}
+			ResolveTask(RemoteTuple<Promise::Resolver, v8::Context> resolver, std::shared_ptr<Transferable> value, bool did_throw, std::string stack_hint) :
+				resolver{std::move(resolver)}, value{std::move(value)}, did_throw{did_throw}, stack_hint{std::move(stack_hint)} {}
 
 			void Run() final {
 				auto context = this->resolver.Deref<1>();
 				Context::Scope context_scope{context};
 				auto resolver = this->resolver.Deref<0>();
 				if (did_throw) {
-					Unmaybe(resolver->Reject(context, PrepareRejectedValue(value)));
+					Unmaybe(resolver->Reject(context, PrepareRejectedValue(value, stack_hint)));
 				} else {
 					Unmaybe(resolver->Resolve(context, value->TransferIn()));
 				}
@@ -140,6 +147,7 @@ class TransferablePromiseHolder final : public ClassHandle {
 			RemoteTuple<Promise::Resolver, v8::Context> resolver;
 			std::shared_ptr<Transferable> value;
 			bool did_throw;
+			std::string stack_hint;
 		};
 
 		std::shared_ptr<TransferablePromiseState> state;
@@ -151,6 +159,10 @@ class TransferablePromise : public Transferable {
 	public:
 		TransferablePromise(Local<Promise> promise, TransferOptions transfer_options) :
 				state{std::make_shared<TransferablePromiseState>()} {
+			Local<Value> stack_hint = IsolateEnvironment::GetCurrent().GetPromiseStackHint(promise);
+			if (stack_hint->IsString()) {
+				state->write()->stack_hint = *String::Utf8Value{Isolate::GetCurrent(), stack_hint};
+			}
 			MakeHolder(transfer_options).Accept(promise);
 		}
 
@@ -166,7 +178,7 @@ class TransferablePromise : public Transferable {
 			auto lock = state->write();
 			if (lock->resolved) {
 				if (lock->did_throw) {
-					Unmaybe(resolver->Reject(context, PrepareRejectedValue(lock->value)));
+					Unmaybe(resolver->Reject(context, PrepareRejectedValue(lock->value, lock->stack_hint)));
 				} else {
 					Unmaybe(resolver->Resolve(context, lock->value->TransferIn()));
 				}
