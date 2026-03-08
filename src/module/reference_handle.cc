@@ -830,12 +830,12 @@ class SetRunner final : public AccessorRunner {
 		void Phase2() final {
 			auto context = Deref(this->context);
 			Context::Scope context_scope{context};
-			auto name = GetKey(context);
+			auto property = GetKey(context);
 			auto object = GetTargetAndAlsoCheckForProxy();
-			// Delete key before transferring in, potentially freeing up some v8 heap
-			Unmaybe(object->Delete(context, name));
+			// Delete the property before transferring in, potentially freeing up some v8 heap.
+			Unmaybe(object->Delete(context, property));
 			auto val_inner = val->TransferIn();
-			if (!Unmaybe(object->CreateDataProperty(context, GetKey(context), val_inner))) {
+			if (!Unmaybe(object->CreateDataProperty(context, property, val_inner))) {
 				throw RuntimeTypeError("Set failed");
 			}
 		}
