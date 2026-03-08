@@ -9,6 +9,10 @@
 namespace ivm {
 namespace detail {
 
+struct ReferenceNameHolder {
+	std::shared_ptr<std::string> value;
+};
+
 /**
  * Holds common data for ReferenceHandle and ReferenceHandleTransferable
  */
@@ -28,7 +32,7 @@ class ReferenceData {
 			bool is_array = false,
 			bool is_promise = false,
 			bool is_async = false,
-			std::shared_ptr<std::string> name = std::make_shared<std::string>()
+			std::shared_ptr<ReferenceNameHolder> name = std::make_shared<ReferenceNameHolder>()
 		);
 
 	protected:
@@ -41,7 +45,7 @@ class ReferenceData {
 		bool is_array;
 		bool is_promise;
 		bool is_async;
-		std::shared_ptr<std::string> name;
+		std::shared_ptr<ReferenceNameHolder> name;
 };
 
 } // namespace detail

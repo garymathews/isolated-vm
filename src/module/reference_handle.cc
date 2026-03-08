@@ -33,13 +33,31 @@ auto InferTypeOf(Local<Value> value) -> TypeOf {
 	}
 }
 
-std::string* GetConstructorName(Local<Value> value) {
+auto GetConstructorName(Local<Value> value) -> shared_ptr<std::string> {
 	if(value->IsObject()) {
-		std::string* name = new std::string(HandleCast<std::string>(value.As<v8::Object>()->GetConstructorName()));
-		return name;
+		return std::make_shared<std::string>(HandleCast<std::string>(value.As<v8::Object>()->GetConstructorName()));
 	}
-	return new std::string();
+	return std::make_shared<std::string>();
 }
+
+class GetConstructorNameTask final : public Runnable {
+	public:
+		GetConstructorNameTask(
+			RemoteHandle<Value> reference,
+			std::shared_ptr<lockable_t<shared_ptr<std::string>, false, true>> result
+		) :
+			reference{std::move(reference)},
+			result{std::move(result)} {}
+
+		void Run() final {
+			*result->write() = GetConstructorName(reference.Deref());
+			result->notify_one();
+		}
+
+	private:
+		RemoteHandle<Value> reference;
+		std::shared_ptr<lockable_t<shared_ptr<std::string>, false, true>> result;
+};
 
 /**
  * The return value for .derefInto()
@@ -97,7 +115,7 @@ ReferenceData::ReferenceData(Local<Value> value, bool inherit) : ReferenceData{
 		value->IsArray(),
 		value->IsPromise(),
 		value->IsAsyncFunction(),
-		std::shared_ptr<std::string>(GetConstructorName(value))} {}
+		std::make_shared<ReferenceNameHolder>()} {}
 
 ReferenceData::ReferenceData(
 	shared_ptr<IsolateHolder> isolate,
@@ -109,7 +127,7 @@ ReferenceData::ReferenceData(
 	bool is_array,
 	bool is_promise,
 	bool is_async,
-	shared_ptr<std::string> name
+	shared_ptr<ReferenceNameHolder> name
 ) :
 	isolate{std::move(isolate)},
 	reference{std::move(reference)},
@@ -235,10 +253,33 @@ auto ReferenceHandle::IsAsync() -> Local<Value> {
  */
 auto ReferenceHandle::Name() -> Local<Value> {
 	CheckDisposed();
-	if (name.get() == nullptr) {
+	if (!name->value) {
+		auto constructor_name = std::make_shared<std::string>();
+		if (type_of == TypeOf::Object || type_of == TypeOf::Function) {
+			auto current = IsolateEnvironment::GetCurrentHolder();
+			if (isolate.get() == current.get()) {
+				constructor_name = GetConstructorName(reference.Deref());
+			} else {
+				auto result = std::make_shared<lockable_t<shared_ptr<std::string>, false, true>>();
+				isolate->ScheduleTask(
+					std::make_unique<GetConstructorNameTask>(reference, result),
+					true,
+					true
+				);
+				auto lock = result->read<true>();
+				while (!*lock) {
+					lock.wait();
+				}
+				constructor_name = *lock;
+			}
+		}
+		name->value = constructor_name;
+	}
+	auto constructor_name = name->value;
+	if (constructor_name.get() == nullptr) {
 		return v8::Undefined(Isolate::GetCurrent());
 	}
-	return HandleCast<v8::Local<v8::String>>(name.get());
+	return HandleCast<v8::Local<v8::String>>(constructor_name.get());
 }
 
 /**

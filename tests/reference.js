@@ -4,6 +4,15 @@ const { strictEqual, throws } = require('assert');
 let trap = false;
 
 {
+	const objectRef = new ivm.Reference({});
+	const functionRef = new ivm.Reference(function namedFn() {});
+	const numberRef = new ivm.Reference(1);
+	strictEqual(objectRef.name, 'Object');
+	strictEqual(functionRef.name, 'Function');
+	strictEqual(numberRef.name, '');
+}
+
+{
 	// Set up inheritance
 	const foo = { foo: 1 };
 	const bar = Object.create(foo);
