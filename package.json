@@ -11,7 +11,10 @@
     "install": "node-gyp rebuild --release -j max && node-gyp clean",
     "rebuild": "node-gyp rebuild --release -j max",
     "lint": "find src -name '*.cc' | xargs -n1 clang-tidy",
-    "test": "node test.js"
+    "test": "node test.js",
+    "bench": "node --no-node-snapshot bench/runtime.js",
+    "bench:runtime": "node --no-node-snapshot bench/runtime.js",
+    "bench:micro": "node --no-node-snapshot bench/micro/startup.js && node --no-node-snapshot bench/micro/reference.js && node --no-node-snapshot bench/micro/external-copy.js"
   },
   "dependencies": {
     "node-gyp": "^11.4.2"
