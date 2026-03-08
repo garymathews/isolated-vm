@@ -88,23 +88,19 @@ struct IsolateHolderAndJoin {
 	std::shared_ptr<IsolateDisposeWait> dispose_wait;
 };
 auto* default_isolates = new lockable_t<std::unordered_map<v8::Isolate*, IsolateHolderAndJoin>>;
-extern "C"
-void init(Local<Object> target) {
-	// Create default isolate env
+auto EnsureDefaultEnvironment() -> std::shared_ptr<IsolateHolder> {
 	Isolate* isolate = Isolate::GetCurrent();
 	Local<Context> context = isolate->GetCurrentContext();
-	// Maybe this would happen if you include the module from `vm`?
-	{
-		auto isolates = default_isolates->write();
-		assert(isolates->find(isolate) == isolates->end());
-		auto holder = IsolateEnvironment::New(isolate, context);
-		isolates->insert(std::make_pair(
-			isolate,
-			IsolateHolderAndJoin{holder, holder->GetIsolate()->GetDisposeWaitHandle()}
-		));
+	auto isolates = default_isolates->write();
+	auto found = isolates->find(isolate);
+	if (found != isolates->end()) {
+		return found->second.holder;
 	}
-	Unmaybe(target->Set(context, v8_symbol("ivm"), LibraryHandle::Get()));
-
+	auto holder = IsolateEnvironment::New(isolate, context);
+	isolates->insert(std::make_pair(
+		isolate,
+		IsolateHolderAndJoin{holder, holder->GetIsolate()->GetDisposeWaitHandle()}
+	));
 	node::AddEnvironmentCleanupHook(isolate, [](void* param) {
 		auto* isolate = static_cast<v8::Isolate*>(param);
 		auto it = default_isolates->read()->find(isolate);
@@ -112,7 +108,21 @@ void init(Local<Object> target) {
 		it->second.dispose_wait->Join();
 		default_isolates->write()->erase(isolate); // `it` might have changed, don't use it
 	}, isolate);
+	return holder;
+}
 
+void GetLibraryHandle(Local<Name> /*property*/, const PropertyCallbackInfo<Value>& info) {
+	detail::RunBarrier([&]() {
+		EnsureDefaultEnvironment();
+		info.GetReturnValue().Set(LibraryHandle::Get());
+	});
+}
+
+extern "C"
+void init(Local<Object> target) {
+	Isolate* isolate = Isolate::GetCurrent();
+	Local<Context> context = isolate->GetCurrentContext();
+	Unmaybe(target->SetLazyDataProperty(context, v8_symbol("ivm"), GetLibraryHandle));
 
 	if (!did_global_init.exchange(true)) {
 		// These flags will override limits set through code. Since the main node isolate is already

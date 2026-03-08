@@ -14,6 +14,8 @@ using namespace v8;
 namespace ivm {
 namespace {
 
+constexpr const char* kLazyIvmTarget = "__ivm_target__";
+
 auto PrepareRejectedValue(const std::shared_ptr<Transferable>& value) -> Local<Value> {
 	Isolate* isolate = Isolate::GetCurrent();
 	Local<Value> rejection = value->TransferIn();
@@ -246,7 +248,15 @@ auto OptionalTransferOut(Local<Value> value, TransferOptions options) -> std::un
 	switch (options.type) {
 		case TransferOptions::Type::None: {
 			if (value->IsObject()) {
-				auto* ptr = ClassHandle::Unwrap<TransferableHandle>(value.As<Object>());
+				Local<Object> object = value.As<Object>();
+				auto* ptr = ClassHandle::Unwrap<TransferableHandle>(object);
+				if (ptr == nullptr) {
+					Local<Context> context = Isolate::GetCurrent()->GetCurrentContext();
+					Local<Value> lazy_target;
+					if (object->Get(context, v8_symbol(kLazyIvmTarget)).ToLocal(&lazy_target) && lazy_target->IsObject()) {
+						ptr = ClassHandle::Unwrap<TransferableHandle>(lazy_target.As<Object>());
+					}
+				}
 				if (ptr != nullptr) {
 					return ptr->TransferOut();
 				}
