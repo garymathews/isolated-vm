@@ -1,9 +1,31 @@
 'use strict';
+const { spawnSync } = require('child_process');
+const path = require('path');
 const ivm = require('../../isolated-vm');
-const { runCase } = require('../lib');
+const { printSummary, runCase } = require('../lib');
 
 const smallSource = 'globalThis.value = 1;';
 const largeSource = Array(20000).fill().map((_, ii) => `function fn${ii}(){return ${ii};}`).join('\n');
+const root = path.resolve(__dirname, '..', '..');
+
+{
+	const samples = [];
+	for (let ii = 0; ii < 15; ++ii) {
+		const result = spawnSync(process.execPath, [
+			'--no-node-snapshot',
+			'-e',
+			"const start=process.hrtime.bigint(); require('./isolated-vm'); console.log(Number(process.hrtime.bigint()-start))",
+		], {
+			cwd: root,
+			encoding: 'utf8',
+		});
+		if (result.status !== 0) {
+			throw new Error(result.stderr || 'require benchmark failed');
+		}
+		samples.push(Number(result.stdout.trim()));
+	}
+	printSummary('startup:require(isolated-vm)', samples);
+}
 
 runCase('startup:new Isolate()', {
 	iterations: 25,

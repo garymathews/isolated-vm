@@ -25,6 +25,12 @@ function summarize(samples) {
 	return { median, mean };
 }
 
+function printSummary(name, samples) {
+	const { median, mean } = summarize(samples);
+	const opsPerSec = 1e9 / median;
+	console.log(`${name}: median ${formatDurationNs(median)} | mean ${formatDurationNs(mean)} | ${formatNumber(opsPerSec)} ops/s`);
+}
+
 function runCase(name, options, fn) {
 	const {
 		warmup = 5,
@@ -60,5 +66,6 @@ function runCase(name, options, fn) {
 }
 
 module.exports = {
+	printSummary,
 	runCase,
 };

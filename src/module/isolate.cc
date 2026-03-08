@@ -35,6 +35,13 @@ class LibraryHandle : public TransferableHandle {
 	public:
 		using DontFreezeInstance = void;
 
+		template <class Type>
+		static void FreezePrototype(Local<Context> context, Local<String> prototype) {
+			auto fn = Unmaybe(ClassHandle::GetFunctionTemplate<Type>()->GetFunction(context));
+			auto proto = Unmaybe(fn->Get(context, prototype)).template As<Object>();
+			proto->SetIntegrityLevel(context, IntegrityLevel::kFrozen);
+		}
+
 		static auto Definition() -> Local<FunctionTemplate> {
 			return Inherit<TransferableHandle>(MakeClass(
 				"isolated_vm", nullptr,
@@ -55,26 +62,18 @@ class LibraryHandle : public TransferableHandle {
 		static auto Get() -> Local<Object> {
 			Local<Object> library = ClassHandle::NewInstance<LibraryHandle>().As<Object>();
 			auto context = Isolate::GetCurrent()->GetCurrentContext();
+			auto prototype = HandleCast<Local<String>>("prototype");
 			Unmaybe(library->Set(context, v8_symbol("lib"), ClassHandle::NewInstance<LibHandle>()));
 
-			// Freeze prototypes of all classes
-			auto prototype = HandleCast<Local<String>>("prototype");
-			auto freeze = [&](const char* name) {
-				auto fn = Unmaybe(library->Get(context, HandleCast<Local<String>>(name))).As<Function>();
-				auto proto = Unmaybe(fn->Get(context, prototype)).As<Object>();
-				proto->SetIntegrityLevel(context, IntegrityLevel::kFrozen);
-			};
-			freeze("Callback");
-			freeze("Context");
-			freeze("ExternalCopy");
-			freeze("Isolate");
-			freeze("NativeModule");
-			freeze("Reference");
-			freeze("Script");
+			FreezePrototype<CallbackHandle>(context, prototype);
+			FreezePrototype<ContextHandle>(context, prototype);
+			FreezePrototype<ExternalCopyHandle>(context, prototype);
+			FreezePrototype<IsolateHandle>(context, prototype);
+			FreezePrototype<NativeModuleHandle>(context, prototype);
+			FreezePrototype<ReferenceHandle>(context, prototype);
+			FreezePrototype<ScriptHandle>(context, prototype);
 
-			// Also freeze this prototype
 			library->SetIntegrityLevel(context, IntegrityLevel::kFrozen);
-			library->GetPrototype().As<Object>()->SetIntegrityLevel(context, IntegrityLevel::kFrozen);
 			return library;
 		}
 };
