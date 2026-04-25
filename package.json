@@ -8,13 +8,14 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "install": "node-gyp rebuild --release -j max && node-gyp clean",
+    "install": "node-gyp configure && node-gyp build --release -j max",
     "rebuild": "node-gyp rebuild --release -j max",
     "lint": "find src -name '*.cc' | xargs -n1 clang-tidy",
     "test": "node test.js"
   },
   "dependencies": {
-    "node-gyp": "^12.3.0"
+    "node-gyp": "^12.3.0",
+    "node-gyp-build": "^4.8.4"
   },
   "binary": {
     "module_path": "out"
